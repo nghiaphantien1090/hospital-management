@@ -1,0 +1,6 @@
+.idea
+public
+.env
+*.pyc
+__pycache__/
+docker-compose.yml

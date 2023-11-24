@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: fm_erp_db3
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: $DB_USER
+      POSTGRES_PASSWORD: $DB_PASSWORD
+      PGDATA: /data/postgres
+    env_file:
+      - .env
+    ports:
+      - "8432:5432"
+    volumes:
+      - db:/data/postgres
+
+  erp:
+    image: odoo:16.0
+    container_name: fm_erp3
+    environment:
+      HOST: db
+      PORT: 5432
+      USER: $DB_USER
+      PASSWORD: $DB_PASSWORD
+    env_file:
+      - .env
+    depends_on:
+      - db
+    ports:
+      - "8069:8069"
+    user: root
+    volumes:
+      - ./addons:/mnt/premium-addons
+      - ./extra-addons:/mnt/extra-addons
+      - ./configs:/etc/odoo
+      - ./public:/var/lib/odoo
+
+volumes:
+  db:
+    name: fm_erp_db3

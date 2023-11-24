@@ -1,0 +1,99 @@
+image: docker:stable
+
+stages:
+  - test
+  - build
+  - release_staging
+  - deploy_staging
+  - release_prod
+  - deploy_prod
+
+services:
+  - name: docker:stable-dind
+    alias: localdocker
+
+variables:
+  DOCKER_HOST: tcp://localdocker:2375
+  DOCKER_TLS_CERTDIR: ""
+  COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA 
+  DEV_IMAGE: $CI_REGISTRY_IMAGE:dev
+  PROD_IMAGE: $CI_REGISTRY_IMAGE:latest
+
+.attach_ssh:
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H -p $SSH_PORT $SSH_HOST >> ~/.ssh/known_hosts
+
+.gitlab-docker:
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+test_coding_style:
+  stage: test
+  image: pyfound/black
+  script:
+    - black --check extra-addons
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+test_unit_testing:
+  stage: test
+  script:
+    - echo "Update later"
+  only:
+    - main
+
+build:
+  stage: build
+  extends: .gitlab-docker
+  script:
+    - docker build -t $COMMIT_IMAGE .
+    - docker push $COMMIT_IMAGE
+  only:
+    - main
+
+release_staging:
+  stage: release_staging
+  extends: .gitlab-docker
+  script:
+    - docker pull $COMMIT_IMAGE
+    - docker tag $COMMIT_IMAGE $DEV_IMAGE
+    - docker push $DEV_IMAGE
+  only:
+    - main
+
+deploy_staging:
+  stage: deploy_staging
+  extends: .attach_ssh
+  script:
+    - ssh $SSH_USER@$SSH_HOST -p $SSH_PORT "sh /home/dev/fm-erp/deploy.sh"
+  only:
+    - main
+
+release_prod:
+  stage: release_prod
+  when: manual
+  extends: .gitlab-docker
+  script:
+    - docker pull $DEV_IMAGE
+    - docker tag $DEV_IMAGE $PROD_IMAGE
+    - docker push $PROD_IMAGE
+  only:
+    - main
+
+deploy_prod:
+  stage: deploy_prod
+  extends: .attach_ssh
+  environment:
+    name: Production
+  needs:
+    - release_prod
+  script:
+    - ssh $SSH_USER@$SSH_HOST -p $SSH_PORT "sh /home/dev/trungvu/deploy.sh"
+  only:
+    - main
